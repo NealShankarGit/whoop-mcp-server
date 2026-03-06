@@ -36,7 +36,7 @@ if (existingTokens) {
 
 const sync = new WhoopSync(client, db);
 
-const SESSION_TTL_MS = 30 * 60 * 1000;
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const transports = new Map<string, { transport: StreamableHTTPServerTransport; lastAccess: number }>();
 
 function cleanupStaleSessions(): void {
@@ -655,14 +655,20 @@ async function main(): Promise<void> {
 				let transport: StreamableHTTPServerTransport;
 
 				if (sessionId && transports.has(sessionId)) {
+				// Existing valid session
 					const session = transports.get(sessionId)!;
 					session.lastAccess = Date.now();
 					transport = session.transport;
 				} else {
+					// No session ID provided OR session ID is expired/unknown - create new session
+					if (sessionId) {
+						process.stderr.write(`Session ${sessionId} expired or unknown, creating new session\n`);
+					}
 					transport = new StreamableHTTPServerTransport({
 						sessionIdGenerator: () => crypto.randomUUID(),
 						onsessioninitialized: newSessionId => {
 							transports.set(newSessionId, { transport, lastAccess: Date.now() });
+							process.stderr.write(`New session created: ${newSessionId}\n`);
 						},
 					});
 
