@@ -15,6 +15,7 @@ Built using the [WHOOP Developer API v2](https://developer.whoop.com/docs/introd
 - **Extended `get_today`** with sleep consistency, sleep needed, sleep debt, restorative sleep, stage percentages + durations, wake events, full nap section with time windows, and weight
 - **Extended `get_sleep_analysis`** with 11 new columns per night including respiratory rate, stage breakdowns, and sleep debt
 - **Extended `get_strain_history`** with avg/max HR per day and detailed workout breakdown with sport, duration, strain, HR, calories, and distance
+- **Session persistence** — extended session TTL to 24 hours with automatic expired session recovery; server auto-creates new sessions when stale session IDs are received, eliminating connector drops between chats
 - **Fixed Express middleware conflict** — `express.json()` was consuming the request body before `StreamableHTTPServerTransport` could read it, causing "Parse error: Invalid JSON" on all MCP requests
 - **Upgraded MCP SDK** from `^1.0.0` to `1.27.1` for working Streamable HTTP support
 - **Database schema migrations** — automatically adds new columns to existing SQLite databases without data loss
@@ -31,6 +32,7 @@ Built using the [WHOOP Developer API v2](https://developer.whoop.com/docs/introd
 - **Auto-Sync**: Smart sync logic keeps data fresh without redundant API calls
 - **90-Day History**: Local SQLite cache for trend analysis
 - **Encrypted Token Storage**: OAuth tokens encrypted at rest using AES-256-GCM
+- **Session Persistence**: 24-hour session TTL with automatic recovery for expired sessions
 
 ## MCP Tools
 
@@ -219,11 +221,15 @@ app.use((req, res, next) => {
 });
 ```
 
+### Session Persistence Fix
+The original 30-minute session TTL caused Claude's connector to silently lose connection between chats. Extended to 24 hours and added automatic expired session recovery — when a request arrives with an unknown or expired session ID, the server creates a new session instead of returning an error.
+
 ### Other Fixes
 - **MCP SDK upgraded** from `^1.0.0` to `1.27.1` — original version had broken Streamable HTTP support
 - **Zone duration null checks** — some workouts don't have HR zone data, causing crashes during sync
 - **Nap timezone fix** — `getTodayNap()` now uses 24-hour window instead of UTC date comparison
 - **Sleep Debt display** — shows "0h 0m" instead of "N/A" when debt is zero
+- **systemd EnvironmentFile fix** — `EnvironmentFile` silently fails to load env vars; switched to inline `Environment=` directives to ensure token encryption key is always available
 
 ## WHOOP API v2 Endpoints Used
 
