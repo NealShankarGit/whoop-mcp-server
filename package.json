@@ -23,7 +23,7 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "better-sqlite3": "^11.6.0",
     "express": "^4.21.0"
   },

@@ -39,12 +39,25 @@ interface SleepTrendRow {
 	total_sleep_hours: number;
 	performance: number;
 	efficiency: number;
+	consistency: number | null;
+	respiratory_rate: number | null;
+	sleep_needed_milli: number | null;
+	sleep_debt_milli: number | null;
+	restorative_milli: number | null;
+	disturbance_count: number | null;
+	total_in_bed_milli: number | null;
+	awake_milli: number | null;
+	light_milli: number | null;
+	deep_milli: number | null;
+	rem_milli: number | null;
 }
 
 interface StrainTrendRow {
 	date: string;
 	strain: number;
 	calories: number;
+	avg_hr: number | null;
+	max_hr: number | null;
 }
 
 export class WhoopDatabase {
@@ -120,6 +133,8 @@ export class WhoopDatabase {
 				sleep_needed_baseline_milli INTEGER,
 				sleep_needed_debt_milli INTEGER,
 				sleep_needed_strain_milli INTEGER,
+				sleep_needed_nap_milli INTEGER,
+				disturbance_count INTEGER,
 				synced_at TEXT DEFAULT CURRENT_TIMESTAMP
 			);
 
@@ -127,6 +142,7 @@ export class WhoopDatabase {
 				id TEXT PRIMARY KEY,
 				user_id INTEGER NOT NULL,
 				sport_id INTEGER NOT NULL,
+				sport_name TEXT,
 				start_time TEXT NOT NULL,
 				end_time TEXT NOT NULL,
 				score_state TEXT NOT NULL,
@@ -134,6 +150,8 @@ export class WhoopDatabase {
 				avg_hr INTEGER,
 				max_hr INTEGER,
 				kilojoule REAL,
+				distance_meter REAL,
+				altitude_gain_meter REAL,
 				zone_zero_milli INTEGER,
 				zone_one_milli INTEGER,
 				zone_two_milli INTEGER,
@@ -150,6 +168,36 @@ export class WhoopDatabase {
 
 			INSERT OR IGNORE INTO sync_state (id) VALUES (1);
 		`);
+
+		// Migration: Add new columns to existing tables (if they don't exist)
+		this.migrateSchema();
+	}
+
+	private migrateSchema(): void {
+		// Check and add missing columns to sleep table
+		const sleepColumns = this.db.prepare("PRAGMA table_info(sleep)").all() as { name: string }[];
+		const sleepColumnNames = sleepColumns.map(c => c.name);
+
+		if (!sleepColumnNames.includes('sleep_needed_nap_milli')) {
+			this.db.exec('ALTER TABLE sleep ADD COLUMN sleep_needed_nap_milli INTEGER');
+		}
+		if (!sleepColumnNames.includes('disturbance_count')) {
+			this.db.exec('ALTER TABLE sleep ADD COLUMN disturbance_count INTEGER');
+		}
+
+		// Check and add missing columns to workouts table
+		const workoutColumns = this.db.prepare("PRAGMA table_info(workouts)").all() as { name: string }[];
+		const workoutColumnNames = workoutColumns.map(c => c.name);
+
+		if (!workoutColumnNames.includes('sport_name')) {
+			this.db.exec('ALTER TABLE workouts ADD COLUMN sport_name TEXT');
+		}
+		if (!workoutColumnNames.includes('distance_meter')) {
+			this.db.exec('ALTER TABLE workouts ADD COLUMN distance_meter REAL');
+		}
+		if (!workoutColumnNames.includes('altitude_gain_meter')) {
+			this.db.exec('ALTER TABLE workouts ADD COLUMN altitude_gain_meter REAL');
+		}
 	}
 
 	saveTokens(tokens: WhoopTokens): void {
@@ -263,8 +311,9 @@ export class WhoopDatabase {
 				id, user_id, start_time, end_time, is_nap, score_state,
 				total_in_bed_milli, total_awake_milli, total_light_milli, total_deep_milli, total_rem_milli,
 				sleep_performance, sleep_efficiency, sleep_consistency, respiratory_rate,
-				sleep_needed_baseline_milli, sleep_needed_debt_milli, sleep_needed_strain_milli, synced_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+				sleep_needed_baseline_milli, sleep_needed_debt_milli, sleep_needed_strain_milli,
+				sleep_needed_nap_milli, disturbance_count, synced_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		`);
 
 		const insertMany = this.db.transaction((items: WhoopSleep[]) => {
@@ -287,7 +336,9 @@ export class WhoopDatabase {
 					s.score?.respiratory_rate ?? null,
 					s.score?.sleep_needed.baseline_milli ?? null,
 					s.score?.sleep_needed.need_from_sleep_debt_milli ?? null,
-					s.score?.sleep_needed.need_from_recent_strain_milli ?? null
+					s.score?.sleep_needed.need_from_recent_strain_milli ?? null,
+					s.score?.sleep_needed.need_from_recent_nap_milli ?? null,
+					s.score?.stage_summary.disturbance_count ?? null
 				);
 			}
 		});
@@ -298,11 +349,11 @@ export class WhoopDatabase {
 	upsertWorkouts(workouts: WhoopWorkout[]): void {
 		const stmt = this.db.prepare(`
 			INSERT OR REPLACE INTO workouts (
-				id, user_id, sport_id, start_time, end_time, score_state,
-				strain, avg_hr, max_hr, kilojoule,
+				id, user_id, sport_id, sport_name, start_time, end_time, score_state,
+				strain, avg_hr, max_hr, kilojoule, distance_meter, altitude_gain_meter,
 				zone_zero_milli, zone_one_milli, zone_two_milli, zone_three_milli, zone_four_milli, zone_five_milli,
 				synced_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		`);
 
 		const insertMany = this.db.transaction((items: WhoopWorkout[]) => {
@@ -311,6 +362,7 @@ export class WhoopDatabase {
 					w.id,
 					w.user_id,
 					w.sport_id,
+					w.sport_name ?? null,
 					w.start,
 					w.end,
 					w.score_state,
@@ -318,12 +370,14 @@ export class WhoopDatabase {
 					w.score?.average_heart_rate ?? null,
 					w.score?.max_heart_rate ?? null,
 					w.score?.kilojoule ?? null,
-					w.score?.zone_duration.zone_zero_milli ?? null,
-					w.score?.zone_duration.zone_one_milli ?? null,
-					w.score?.zone_duration.zone_two_milli ?? null,
-					w.score?.zone_duration.zone_three_milli ?? null,
-					w.score?.zone_duration.zone_four_milli ?? null,
-					w.score?.zone_duration.zone_five_milli ?? null
+					w.score?.distance_meter ?? null,
+					w.score?.altitude_gain_meter ?? null,
+					w.score?.zone_duration?.zone_zero_milli ?? null,
+					w.score?.zone_duration?.zone_one_milli ?? null,
+					w.score?.zone_duration?.zone_two_milli ?? null,
+					w.score?.zone_duration?.zone_three_milli ?? null,
+					w.score?.zone_duration?.zone_four_milli ?? null,
+					w.score?.zone_duration?.zone_five_milli ?? null
 				);
 			}
 		});
@@ -341,6 +395,42 @@ export class WhoopDatabase {
 
 	getLatestSleep(): DbSleep | null {
 		return this.db.prepare('SELECT * FROM sleep WHERE is_nap = 0 ORDER BY start_time DESC LIMIT 1').get() as DbSleep | undefined ?? null;
+	}
+
+	getLatestNap(): DbSleep | null {
+		return this.db.prepare('SELECT * FROM sleep WHERE is_nap = 1 ORDER BY start_time DESC LIMIT 1').get() as DbSleep | undefined ?? null;
+	}
+
+	getTodayNap(): DbSleep | null {
+		// Use 24-hour window to handle timezone differences
+		return this.db.prepare(`
+			SELECT * FROM sleep
+			WHERE is_nap = 1 AND start_time >= datetime('now', '-24 hours')
+			ORDER BY start_time DESC LIMIT 1
+		`).get() as DbSleep | undefined ?? null;
+	}
+
+	getNapTrends(days: number): SleepTrendRow[] {
+		return this.db.prepare(`
+			SELECT DATE(start_time) as date,
+				ROUND((total_in_bed_milli - total_awake_milli) / 3600000.0, 2) as total_sleep_hours,
+				sleep_performance as performance,
+				sleep_efficiency as efficiency,
+				sleep_consistency as consistency,
+				respiratory_rate,
+				sleep_needed_nap_milli as sleep_needed_milli,
+				sleep_needed_debt_milli as sleep_debt_milli,
+				(COALESCE(total_deep_milli, 0) + COALESCE(total_rem_milli, 0)) as restorative_milli,
+				disturbance_count,
+				total_in_bed_milli,
+				total_awake_milli as awake_milli,
+				total_light_milli as light_milli,
+				total_deep_milli as deep_milli,
+				total_rem_milli as rem_milli
+			FROM sleep
+			WHERE is_nap = 1 AND start_time >= DATE('now', '-' || ? || ' days')
+			ORDER BY start_time DESC
+		`).all(days) as SleepTrendRow[];
 	}
 
 	getCyclesByDateRange(startDate: string, endDate: string): DbCycle[] {
@@ -381,7 +471,19 @@ export class WhoopDatabase {
 		return this.db.prepare(`
 			SELECT DATE(start_time) as date,
 				ROUND((total_in_bed_milli - total_awake_milli) / 3600000.0, 2) as total_sleep_hours,
-				sleep_performance as performance, sleep_efficiency as efficiency
+				sleep_performance as performance,
+				sleep_efficiency as efficiency,
+				sleep_consistency as consistency,
+				respiratory_rate,
+				(COALESCE(sleep_needed_baseline_milli, 0) + COALESCE(sleep_needed_debt_milli, 0) + COALESCE(sleep_needed_strain_milli, 0) + COALESCE(sleep_needed_nap_milli, 0)) as sleep_needed_milli,
+				sleep_needed_debt_milli as sleep_debt_milli,
+				(COALESCE(total_deep_milli, 0) + COALESCE(total_rem_milli, 0)) as restorative_milli,
+				disturbance_count,
+				total_in_bed_milli,
+				total_awake_milli as awake_milli,
+				total_light_milli as light_milli,
+				total_deep_milli as deep_milli,
+				total_rem_milli as rem_milli
 			FROM sleep
 			WHERE is_nap = 0 AND sleep_performance IS NOT NULL AND start_time >= DATE('now', '-' || ? || ' days')
 			ORDER BY start_time DESC
@@ -390,11 +492,19 @@ export class WhoopDatabase {
 
 	getStrainTrends(days: number): StrainTrendRow[] {
 		return this.db.prepare(`
-			SELECT DATE(start_time) as date, strain, ROUND(kilojoule / 4.184, 0) as calories
+			SELECT DATE(start_time) as date, strain, ROUND(kilojoule / 4.184, 0) as calories, avg_hr, max_hr
 			FROM cycles
 			WHERE strain IS NOT NULL AND start_time >= DATE('now', '-' || ? || ' days')
 			ORDER BY start_time DESC
 		`).all(days) as StrainTrendRow[];
+	}
+
+	getWorkoutTrends(days: number): DbWorkout[] {
+		return this.db.prepare(`
+			SELECT * FROM workouts
+			WHERE start_time >= DATE('now', '-' || ? || ' days')
+			ORDER BY start_time DESC
+		`).all(days) as DbWorkout[];
 	}
 
 	close(): void {
