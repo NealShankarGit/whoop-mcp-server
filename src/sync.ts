@@ -77,9 +77,9 @@ export class WhoopSync {
 		}
 
 		const lastSync = new Date(state.lastSyncAt);
-		const hoursSinceSync = (Date.now() - lastSync.getTime()) / (1000 * 60 * 60);
+		const secondsSinceSync = (Date.now() - lastSync.getTime()) / 1000;
 
-		if (hoursSinceSync < 1) {
+		if (secondsSinceSync < 10) {
 			return { type: 'skip' };
 		}
 
