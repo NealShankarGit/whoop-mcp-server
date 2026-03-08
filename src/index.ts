@@ -440,8 +440,8 @@ function createMcpServer(): Server {
 					// Add workout details if any
 					if (workouts.length > 0) {
 						response += `\n## Workouts (${workouts.length} total)\n\n`;
-						response += '| Date | Sport | Duration | Strain | Avg HR | Max HR | Calories | Distance |\n';
-						response += '|------|-------|----------|--------|--------|--------|----------|----------|\n';
+						response += '| Date | Sport | Time | Duration | Strain | Avg HR | Max HR | Calories | Distance |\n';
+						response += '|------|-------|------|----------|--------|--------|--------|----------|----------|\n';
 
 						for (const w of workouts) {
 							const start = new Date(w.start_time);
@@ -451,7 +451,7 @@ function createMcpServer(): Server {
 							const distance = w.distance_meter ? `${(w.distance_meter / 1000).toFixed(2)} km` : 'N/A';
 							const sport = w.sport_name ?? `Sport ${w.sport_id}`;
 
-							response += `| ${formatDate(w.start_time)} | ${sport} | ${formatDuration(durationMs)} | ${w.strain?.toFixed(1) ?? 'N/A'} | ${w.avg_hr ?? 'N/A'} | ${w.max_hr ?? 'N/A'} | ${calories} | ${distance} |\n`;
+							response += `| ${formatDate(w.start_time)} | ${sport} | ${formatTimeWindow(w.start_time, w.end_time)} | ${formatDuration(durationMs)} | ${w.strain?.toFixed(1) ?? 'N/A'} | ${w.avg_hr ?? 'N/A'} | ${w.max_hr ?? 'N/A'} | ${calories} | ${distance} |\n`;
 						}
 					}
 
@@ -556,6 +556,7 @@ function createMcpServer(): Server {
 						const sport = w.sport_name ?? `Sport ID ${w.sport_id}`;
 
 						response += `### ${formatDate(w.start_time)} - ${sport}\n`;
+						response += `- **Time**: ${formatTimeWindow(w.start_time, w.end_time)}\n`;
 						response += `- **Duration**: ${formatDuration(durationMs)}\n`;
 						response += `- **Strain**: ${w.strain?.toFixed(1) ?? 'N/A'} ${w.strain ? getStrainZone(w.strain) : ''}\n`;
 						response += `- **Avg HR**: ${w.avg_hr ?? 'N/A'} bpm\n`;
