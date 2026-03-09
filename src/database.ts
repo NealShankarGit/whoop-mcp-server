@@ -412,7 +412,7 @@ export class WhoopDatabase {
 
 	getNapTrends(days: number): SleepTrendRow[] {
 		return this.db.prepare(`
-			SELECT DATE(start_time) as date,
+			SELECT DATE(start_time, 'localtime') as date,
 				ROUND((total_in_bed_milli - total_awake_milli) / 3600000.0, 2) as total_sleep_hours,
 				sleep_performance as performance,
 				sleep_efficiency as efficiency,
@@ -428,7 +428,7 @@ export class WhoopDatabase {
 				total_deep_milli as deep_milli,
 				total_rem_milli as rem_milli
 			FROM sleep
-			WHERE is_nap = 1 AND start_time >= DATE('now', '-' || ? || ' days')
+			WHERE is_nap = 1 AND start_time >= DATE('now', 'localtime', '-' || ? || ' days')
 			ORDER BY start_time DESC
 		`).all(days) as SleepTrendRow[];
 	}
@@ -460,16 +460,16 @@ export class WhoopDatabase {
 
 	getRecoveryTrends(days: number): RecoveryTrendRow[] {
 		return this.db.prepare(`
-			SELECT DATE(created_at) as date, recovery_score, hrv_rmssd as hrv, resting_hr as rhr
+			SELECT DATE(created_at, 'localtime') as date, recovery_score, hrv_rmssd as hrv, resting_hr as rhr
 			FROM recovery
-			WHERE recovery_score IS NOT NULL AND created_at >= DATE('now', '-' || ? || ' days')
+			WHERE recovery_score IS NOT NULL AND created_at >= DATE('now', 'localtime', '-' || ? || ' days')
 			ORDER BY created_at DESC
 		`).all(days) as RecoveryTrendRow[];
 	}
 
 	getSleepTrends(days: number): SleepTrendRow[] {
 		return this.db.prepare(`
-			SELECT DATE(start_time) as date,
+			SELECT DATE(start_time, 'localtime') as date,
 				ROUND((total_in_bed_milli - total_awake_milli) / 3600000.0, 2) as total_sleep_hours,
 				sleep_performance as performance,
 				sleep_efficiency as efficiency,
@@ -485,16 +485,16 @@ export class WhoopDatabase {
 				total_deep_milli as deep_milli,
 				total_rem_milli as rem_milli
 			FROM sleep
-			WHERE is_nap = 0 AND sleep_performance IS NOT NULL AND start_time >= DATE('now', '-' || ? || ' days')
+			WHERE is_nap = 0 AND sleep_performance IS NOT NULL AND start_time >= DATE('now', 'localtime', '-' || ? || ' days')
 			ORDER BY start_time DESC
 		`).all(days) as SleepTrendRow[];
 	}
 
 	getStrainTrends(days: number): StrainTrendRow[] {
 		return this.db.prepare(`
-			SELECT DATE(start_time) as date, strain, ROUND(kilojoule / 4.184, 0) as calories, avg_hr, max_hr
+			SELECT DATE(start_time, 'localtime') as date, strain, ROUND(kilojoule / 4.184, 0) as calories, avg_hr, max_hr
 			FROM cycles
-			WHERE strain IS NOT NULL AND start_time >= DATE('now', '-' || ? || ' days')
+			WHERE strain IS NOT NULL AND start_time >= DATE('now', 'localtime', '-' || ? || ' days')
 			ORDER BY start_time DESC
 		`).all(days) as StrainTrendRow[];
 	}
@@ -502,7 +502,7 @@ export class WhoopDatabase {
 	getWorkoutTrends(days: number): DbWorkout[] {
 		return this.db.prepare(`
 			SELECT * FROM workouts
-			WHERE start_time >= DATE('now', '-' || ? || ' days')
+			WHERE start_time >= DATE('now', 'localtime', '-' || ? || ' days')
 			ORDER BY start_time DESC
 		`).all(days) as DbWorkout[];
 	}
