@@ -664,11 +664,13 @@ async function main(): Promise<void> {
 					const session = transports.get(sessionId)!;
 					session.lastAccess = Date.now();
 					transport = session.transport;
+				} else if (sessionId) {
+					// Client has a stale session ID (e.g. server restarted) — return 404 so it re-initializes
+					process.stderr.write(`Session ${sessionId} not found, sending 404 to force re-init\n`);
+					res.status(404).json({ error: 'Session not found. Please re-initialize.' });
+					return;
 				} else {
-					// No session ID provided OR session ID is expired/unknown - create new session
-					if (sessionId) {
-						process.stderr.write(`Session ${sessionId} expired or unknown, creating new session\n`);
-					}
+					// No session ID — fresh connection, create a new session
 					transport = new StreamableHTTPServerTransport({
 						sessionIdGenerator: () => crypto.randomUUID(),
 						onsessioninitialized: newSessionId => {
