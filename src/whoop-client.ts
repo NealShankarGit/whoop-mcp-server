@@ -28,6 +28,7 @@ interface PaginationParams {
 
 export class WhoopClient {
 	private tokens: WhoopTokens | null = null;
+	private refreshPromise: Promise<void> | null = null;
 	private readonly clientId: string;
 	private readonly clientSecret: string;
 	private readonly redirectUri: string;
@@ -84,32 +85,61 @@ export class WhoopClient {
 	}
 
 	private async refreshTokens(): Promise<void> {
+		// Deduplicate concurrent refresh calls — if one is already in flight, wait for it
+		if (this.refreshPromise) {
+			return this.refreshPromise;
+		}
+		this.refreshPromise = this._doRefresh().finally(() => {
+			this.refreshPromise = null;
+		});
+		return this.refreshPromise;
+	}
+
+	private async _doRefresh(): Promise<void> {
 		if (!this.tokens?.refresh_token) {
 			throw new Error('No refresh token available');
 		}
 
-		const response = await fetch(`${WHOOP_AUTH_BASE}/token`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-			body: new URLSearchParams({
-				grant_type: 'refresh_token',
-				refresh_token: this.tokens.refresh_token,
-				client_id: this.clientId,
-				client_secret: this.clientSecret,
-			}),
-		});
+		// Capture the refresh token before any async ops
+		const currentRefreshToken = this.tokens.refresh_token;
+		process.stderr.write('[whoop] Attempting token refresh...\n');
 
-		if (!response.ok) {
-			throw new Error(`Token refresh failed: ${await response.text()}`);
+		const tryRefresh = async (): Promise<{ access_token: string; refresh_token?: string; expires_in: number }> => {
+			const response = await fetch(`${WHOOP_AUTH_BASE}/token`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: new URLSearchParams({
+					grant_type: 'refresh_token',
+					refresh_token: currentRefreshToken,
+					client_id: this.clientId,
+					client_secret: this.clientSecret,
+				}),
+			});
+
+			if (!response.ok) {
+				throw new Error(`Token refresh failed: ${await response.text()}`);
+			}
+
+			return response.json() as Promise<{ access_token: string; refresh_token?: string; expires_in: number }>;
+		};
+
+		let data: { access_token: string; refresh_token?: string; expires_in: number };
+		try {
+			data = await tryRefresh();
+		} catch (err) {
+			process.stderr.write(`[whoop] Token refresh attempt 1 failed: ${err}. Retrying in 500ms...\n`);
+			await new Promise<void>(resolve => setTimeout(resolve, 500));
+			data = await tryRefresh();
 		}
 
-		const data = await response.json() as { access_token: string; refresh_token: string; expires_in: number };
 		this.tokens = {
 			access_token: data.access_token,
-			refresh_token: data.refresh_token,
+			// Preserve the existing refresh token if WHOOP doesn't issue a new one
+			refresh_token: data.refresh_token ?? currentRefreshToken,
 			expires_at: Date.now() + data.expires_in * 1000,
 		};
 
+		process.stderr.write(`[whoop] Token refresh successful. Expiry: ${new Date(this.tokens.expires_at).toISOString()}\n`);
 		this.onTokenRefresh?.(this.tokens);
 	}
 

@@ -32,6 +32,9 @@ const client = new WhoopClient({
 const existingTokens = db.getTokens();
 if (existingTokens) {
 	client.setTokens(existingTokens);
+	process.stderr.write(`[whoop] Loaded token from DB. Expires: ${new Date(existingTokens.expires_at).toISOString()}\n`);
+} else {
+	process.stderr.write('[whoop] No existing token found in DB\n');
 }
 
 const sync = new WhoopSync(client, db);
@@ -255,6 +258,7 @@ function createMcpServer(): Server {
 							(sleep.sleep_needed_nap_milli ?? 0);
 
 						response += `## Last Night's Sleep\n`;
+						response += `- **Sleep Window**: ${formatTimeWindow(sleep.start_time, sleep.end_time)}\n`;
 						response += `- **Total Sleep**: ${formatDuration(totalSleep)}\n`;
 						response += `- **Sleep Needed**: ${formatDuration(sleepNeeded)}\n`;
 						response += `- **Sleep Debt**: ${formatDurationOrZero(sleep.sleep_needed_debt_milli)}\n`;
