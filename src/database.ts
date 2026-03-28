@@ -402,10 +402,17 @@ export class WhoopDatabase {
 	}
 
 	getTodayNap(): DbSleep | null {
-		// Use 24-hour window to handle timezone differences
+		// Anchor to the end of the last main sleep (when you woke up today)
+		// so naps from a previous WHOOP cycle are never returned
 		return this.db.prepare(`
 			SELECT * FROM sleep
-			WHERE is_nap = 1 AND start_time >= datetime('now', '-24 hours')
+			WHERE is_nap = 1
+			  AND start_time > (
+			    SELECT end_time FROM sleep
+			    WHERE is_nap = 0
+			    ORDER BY start_time DESC
+			    LIMIT 1
+			  )
 			ORDER BY start_time DESC LIMIT 1
 		`).get() as DbSleep | undefined ?? null;
 	}
