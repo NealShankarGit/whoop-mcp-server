@@ -212,8 +212,9 @@ function createMcpServer(): Server {
 				case 'get_today': {
 					const recovery = db.getLatestRecovery();
 					const sleep = db.getLatestSleep();
-					const cycle = db.getLatestCycle();
+					const cycle = db.getTodayCycle();
 					const nap = db.getTodayNap();
+					const todayWorkouts = db.getTodayWorkouts();
 
 					// Fetch body measurement for weight
 					let weightLbs: number | null = null;
@@ -336,6 +337,26 @@ function createMcpServer(): Server {
 						if (cycle.kilojoule) response += `- **Calories**: ${Math.round(cycle.kilojoule / 4.184)} kcal\n`;
 						if (cycle.avg_hr) response += `- **Avg HR**: ${cycle.avg_hr} bpm\n`;
 						if (cycle.max_hr) response += `- **Max HR**: ${cycle.max_hr} bpm\n`;
+					}
+
+					if (todayWorkouts.length > 0) {
+						response += `\n## Today's Workouts (${todayWorkouts.length})\n\n`;
+						for (const w of todayWorkouts) {
+							const start = new Date(w.start_time);
+							const end = new Date(w.end_time);
+							const durationMs = end.getTime() - start.getTime();
+							const calories = w.kilojoule ? Math.round(w.kilojoule / 4.184) : null;
+							const sport = w.sport_name ?? `Sport ${w.sport_id}`;
+
+							response += `### ${sport}\n`;
+							response += `- **Time**: ${formatTimeWindow(w.start_time, w.end_time)}\n`;
+							response += `- **Duration**: ${formatDuration(durationMs)}\n`;
+							if (w.strain) response += `- **Strain**: ${w.strain.toFixed(1)} ${getStrainZone(w.strain)}\n`;
+							if (w.avg_hr) response += `- **Avg HR**: ${w.avg_hr} bpm\n`;
+							if (w.max_hr) response += `- **Max HR**: ${w.max_hr} bpm\n`;
+							if (calories) response += `- **Calories**: ${calories} kcal\n`;
+							if (w.distance_meter) response += `- **Distance**: ${(w.distance_meter / 1000).toFixed(2)} km\n`;
+						}
 					}
 
 					return { content: [{ type: 'text', text: response }] };

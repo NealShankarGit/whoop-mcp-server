@@ -417,6 +417,36 @@ export class WhoopDatabase {
 		`).get() as DbSleep | undefined ?? null;
 	}
 
+	getTodayCycle(): DbCycle | null {
+		// Anchor to the end of the last main sleep (when you woke up today)
+		// so yesterday's cycle is never returned
+		return this.db.prepare(`
+			SELECT * FROM cycles
+			WHERE start_time > (
+			    SELECT end_time FROM sleep
+			    WHERE is_nap = 0
+			    ORDER BY start_time DESC
+			    LIMIT 1
+			  )
+			ORDER BY start_time DESC LIMIT 1
+		`).get() as DbCycle | undefined ?? null;
+	}
+
+	getTodayWorkouts(): DbWorkout[] {
+		// Anchor to the end of the last main sleep (when you woke up today)
+		// so yesterday's workouts are never returned
+		return this.db.prepare(`
+			SELECT * FROM workouts
+			WHERE start_time > (
+			    SELECT end_time FROM sleep
+			    WHERE is_nap = 0
+			    ORDER BY start_time DESC
+			    LIMIT 1
+			  )
+			ORDER BY start_time DESC
+		`).all() as DbWorkout[];
+	}
+
 	getNapTrends(days: number): SleepTrendRow[] {
 		return this.db.prepare(`
 			SELECT DATE(start_time, 'localtime') as date,
