@@ -212,7 +212,7 @@ function createMcpServer(): Server {
 				case 'get_today': {
 					const recovery = db.getLatestRecovery();
 					const sleep = db.getLatestSleep();
-					const cycle = db.getTodayCycle();
+					const cycle = db.getTodayCycle() || db.getLatestCycle();
 					const nap = db.getTodayNap();
 					const todayWorkouts = db.getTodayWorkouts();
 
