@@ -85,6 +85,7 @@ function formatDate(isoString: string): string {
 		weekday: 'short',
 		month: 'short',
 		day: 'numeric',
+		timeZone: 'UTC',
 	});
 }
 
