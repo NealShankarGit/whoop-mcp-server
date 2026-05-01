@@ -224,6 +224,12 @@ app.use((req, res, next) => {
 ### Session Persistence Fix
 The original 30-minute session TTL caused Claude's connector to silently lose connection between chats. Extended to 24 hours and added automatic expired session recovery — when a request arrives with an unknown or expired session ID, the server creates a new session instead of returning an error.
 
+### Sync State Ghost Update Fix
+`updateSyncState()` was called even when the WHOOP API returned empty data for all endpoints (e.g., during auth failures or account issues). This marked the sync as "up to date" despite no data being written, causing all subsequent tool calls to skip syncing. Fixed by guarding `updateSyncState()` behind a `totalRecords > 0` check.
+
+### Silent Sync Error Swallowing Fix
+The smart sync `catch {}` block in the tool handler silently discarded all sync errors — token refresh failures, API errors, and network issues left no trace in logs or tool responses. Replaced with error logging to stderr so sync failures are visible in `journalctl`.
+
 ### Other Fixes
 - **MCP SDK upgraded** from `^1.0.0` to `1.27.1` — original version had broken Streamable HTTP support
 - **Zone duration null checks** — some workouts don't have HR zone data, causing crashes during sync

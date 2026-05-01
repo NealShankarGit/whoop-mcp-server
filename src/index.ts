@@ -204,8 +204,8 @@ function createMcpServer(): Server {
 				client.setTokens(tokens);
 				try {
 					await sync.smartSync();
-				} catch {
-					// Continue with cached data
+				} catch (err) {
+					process.stderr.write(`[whoop] Sync failed: ${err instanceof Error ? err.message : err}\n`);
 				}
 			}
 

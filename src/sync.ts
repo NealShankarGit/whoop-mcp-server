@@ -42,10 +42,13 @@ export class WhoopSync {
 		if (sleeps.length > 0) this.db.upsertSleeps(sleeps);
 		if (workouts.length > 0) this.db.upsertWorkouts(workouts);
 
-		this.db.updateSyncState(
-			startDate.toISOString().split('T')[0],
-			endDate.toISOString().split('T')[0]
-		);
+		const totalRecords = cycles.length + recoveries.length + sleeps.length + workouts.length;
+		if (totalRecords > 0) {
+			this.db.updateSyncState(
+				startDate.toISOString().split('T')[0],
+				endDate.toISOString().split('T')[0]
+			);
+		}
 
 		return {
 			cycles: cycles.length,
