@@ -533,8 +533,8 @@ function createMcpServer(): Server {
 
 					let response = `# Nap Data (Last ${days} Days)\n\n`;
 					response += `Found **${naps.length}** naps\n\n`;
-					response += '| Date | Duration | Sleep | Eff | Restorative | Awake% | Light% | Deep% | REM% | Wakes | Need Reduced |\n';
-					response += '|------|----------|-------|-----|-------------|--------|--------|-------|------|-------|-------------|\n';
+					response += '| Date | Time Window | Duration | Sleep | Eff | Restorative | Awake% | Light% | Deep% | REM% | Wakes | Need Reduced |\n';
+					response += '|------|-------------|----------|-------|-----|-------------|--------|--------|-------|------|-------|-------------|\n';
 
 					for (const nap of naps) {
 						const totalInBed = nap.total_in_bed_milli ?? 1;
@@ -545,7 +545,8 @@ function createMcpServer(): Server {
 						const restorativeHrs = nap.restorative_milli ? (nap.restorative_milli / 3600000).toFixed(1) : '0';
 						const needReduced = nap.sleep_needed_milli ? formatDuration(Math.abs(nap.sleep_needed_milli)) : 'N/A';
 
-						response += `| ${formatDate(nap.date)} | ${formatDuration(totalInBed)} | ${nap.total_sleep_hours?.toFixed(1) ?? 'N/A'}h | ${nap.efficiency?.toFixed(0) ?? 'N/A'}% | ${restorativeHrs}h | ${awakePercent}% | ${lightPercent}% | ${deepPercent}% | ${remPercent}% | ${nap.disturbance_count ?? 'N/A'} | ${needReduced} |\n`;
+						const timeWindow = nap.start_time && nap.end_time ? formatTimeWindow(nap.start_time, nap.end_time) : 'N/A';
+						response += `| ${formatDate(nap.date)} | ${timeWindow} | ${formatDuration(totalInBed)} | ${nap.total_sleep_hours?.toFixed(1) ?? 'N/A'}h | ${nap.efficiency?.toFixed(0) ?? 'N/A'}% | ${restorativeHrs}h | ${awakePercent}% | ${lightPercent}% | ${deepPercent}% | ${remPercent}% | ${nap.disturbance_count ?? 'N/A'} | ${needReduced} |\n`;
 					}
 
 					// Calculate averages

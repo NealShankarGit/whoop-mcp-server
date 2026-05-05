@@ -36,6 +36,8 @@ interface RecoveryTrendRow {
 
 interface SleepTrendRow {
 	date: string;
+	start_time?: string;
+	end_time?: string;
 	total_sleep_hours: number;
 	performance: number;
 	efficiency: number;
@@ -450,6 +452,8 @@ export class WhoopDatabase {
 	getNapTrends(days: number): SleepTrendRow[] {
 		return this.db.prepare(`
 			SELECT DATE(start_time, 'localtime') as date,
+				start_time,
+				end_time,
 				ROUND((total_in_bed_milli - total_awake_milli) / 3600000.0, 2) as total_sleep_hours,
 				sleep_performance as performance,
 				sleep_efficiency as efficiency,
