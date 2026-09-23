@@ -40,7 +40,19 @@ if (existingTokens) {
 const sync = new WhoopSync(client, db);
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const STATELESS_PATH = '/mcp/stateless/2026-07-28';
 const transports = new Map<string, { transport: StreamableHTTPServerTransport; lastAccess: number }>();
+
+function auditStatelessRequest(req: Request): void {
+	const bounded = (value: string | string[] | undefined): string =>
+		String(Array.isArray(value) ? value[0] : value ?? '').replace(/[\r\n]/g, ' ').slice(0, 256);
+	process.stderr.write(`${JSON.stringify({
+		event: 'mcp_protocol_audit', lane: 'stateless-2026-07-28',
+		protocol_version: bounded(req.headers['mcp-protocol-version']),
+		accept: bounded(req.headers.accept),
+		user_agent: bounded(req.headers['user-agent']),
+	})}\n`);
+}
 
 function cleanupStaleSessions(): void {
 	const now = Date.now();
@@ -645,7 +657,7 @@ async function main(): Promise<void> {
 		process.stderr.write('Whoop MCP server running on stdio\n');
 	} else {
 		const app = express();
-		app.use((req, res, next) => { if (req.path === '/mcp') return next(); express.json()(req, res, next); });
+		app.use((req, res, next) => { if (req.path === '/mcp' || req.path === STATELESS_PATH) return next(); express.json()(req, res, next); });
 
 		app.get('/callback', async (req: Request, res: Response) => {
 			const code = req.query.code as string | undefined;
@@ -713,12 +725,37 @@ async function main(): Promise<void> {
 			res.status(405).send('Method not allowed');
 		});
 
+		app.post(STATELESS_PATH, async (req: Request, res: Response) => {
+			auditStatelessRequest(req);
+			const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+			const mcpServer = createMcpServer();
+			let closed = false;
+			const close = async (): Promise<void> => {
+				if (closed) return;
+				closed = true;
+				await transport.close().catch(() => {});
+				await mcpServer.close().catch(() => {});
+			};
+			res.once('close', () => { void close(); });
+			try {
+				await mcpServer.connect(transport);
+				await transport.handleRequest(req, res);
+			} catch (error) {
+				process.stderr.write(`Stateless MCP request failed: ${error instanceof Error ? error.message : 'unknown error'}\n`);
+				if (!res.headersSent) {
+					res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null });
+				}
+			} finally {
+				await close();
+			}
+		});
+
 		app.get('/sse', (_req: Request, res: Response) => {
 			res.status(410).send('SSE endpoint deprecated. Use /mcp with Streamable HTTP transport.');
 		});
 
-		const server = app.listen(config.port, '0.0.0.0', () => {
-			process.stdout.write(`Whoop MCP server running on http://0.0.0.0:${config.port}\n`);
+		const server = app.listen(config.port, '127.0.0.1', () => {
+			process.stdout.write(`Whoop MCP server running on http://127.0.0.1:${config.port}\n`);
 		});
 
 		const shutdown = (): void => {
