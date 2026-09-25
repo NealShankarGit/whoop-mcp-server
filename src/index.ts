@@ -43,6 +43,15 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const STATELESS_PATH = '/mcp/stateless/2026-07-28';
 const transports = new Map<string, { transport: StreamableHTTPServerTransport; lastAccess: number }>();
 
+function safeErrorSummary(error: unknown): string {
+	if (!(error instanceof Error)) return 'unknown error';
+	const status = /^(API request|Token refresh|Token exchange) failed: (\d{3})/.exec(error.message);
+	if (status) return `${status[1]} failed: HTTP ${status[2]}`;
+	if (error.message === 'Not authenticated') return error.message;
+	if (error instanceof TypeError) return 'network request failed';
+	return error.name;
+}
+
 function auditStatelessRequest(req: Request): void {
 	const bounded = (value: string | string[] | undefined): string =>
 		String(Array.isArray(value) ? value[0] : value ?? '').replace(/[\r\n]/g, ' ').slice(0, 256);
@@ -58,7 +67,7 @@ function cleanupStaleSessions(): void {
 	const now = Date.now();
 	for (const [sessionId, session] of transports) {
 		if (now - session.lastAccess > SESSION_TTL_MS) {
-			session.transport.close().catch(() => {});
+			session.transport.close().catch(error => process.stderr.write(`[whoop] Stale session close failed: ${safeErrorSummary(error)}\n`));
 			transports.delete(sessionId);
 		}
 	}
@@ -99,6 +108,23 @@ function formatDate(isoString: string): string {
 		day: 'numeric',
 		timeZone: 'UTC',
 	});
+}
+
+function formatObservationDate(isoString: string): string {
+	return new Date(isoString).toLocaleDateString('en-US', {
+		year: 'numeric', month: 'short', day: 'numeric', timeZone: 'America/New_York',
+	});
+}
+
+function weightErrorReason(error: unknown): string {
+	const message = error instanceof Error ? error.message : 'unknown error';
+	const apiStatus = /^API request failed: (\d{3})/.exec(message);
+	if (apiStatus) return `WHOOP API returned HTTP ${apiStatus[1]}`;
+	if (message === 'Not authenticated') return message;
+	if (message === 'Invalid WHOOP profile weight observation') return 'WHOOP returned an invalid profile weight';
+	if (error instanceof TypeError) return 'network request failed';
+	if (error instanceof Error && error.name === 'SqliteError') return 'local weight observation could not be stored';
+	return 'body measurement request failed unexpectedly';
 }
 
 function getRecoveryZone(score: number): string {
@@ -217,7 +243,7 @@ function createMcpServer(): Server {
 				try {
 					await sync.smartSync();
 				} catch (err) {
-					process.stderr.write(`[whoop] Sync failed: ${err instanceof Error ? err.message : err}\n`);
+					process.stderr.write(`[whoop] Sync failed: ${safeErrorSummary(err)}\n`);
 				}
 			}
 
@@ -229,19 +255,22 @@ function createMcpServer(): Server {
 					const nap = db.getTodayNap();
 					const todayWorkouts = db.getTodayWorkouts();
 
-					// Fetch body measurement for weight
-					let weightLbs: number | null = null;
+					// WHOOP returns a manually entered profile value without a measurement timestamp.
+					let weightLine: string;
 					try {
 						const bodyMeasurement = await client.getBodyMeasurement();
-						if (bodyMeasurement?.weight_kilogram) {
-							weightLbs = bodyMeasurement.weight_kilogram * 2.20462;
-						}
-					} catch {
-						// Body measurement not available, continue without it
+						const observation = db.recordWeight(bodyMeasurement?.weight_kilogram);
+						const ageDays = (Date.now() - Date.parse(observation.first_observed_at)) / 86_400_000;
+						const stale = ageDays > 30 ? '; unchanged for more than 30 days' : '';
+						weightLine = `- **Weight**: ${(observation.weight_kilogram * 2.20462).toFixed(1)} lbs (WHOOP profile weight, manually entered; observed since ${formatObservationDate(observation.first_observed_at)}${stale})\n`;
+					} catch (error) {
+						const reason = weightErrorReason(error);
+						process.stderr.write(`[whoop] Weight unavailable: ${reason}\n`);
+						weightLine = `- **Weight**: unavailable (${reason})\n`;
 					}
 
 					if (!recovery && !sleep && !cycle) {
-						return { content: [{ type: 'text', text: 'No data available. Try running sync_data first.' }] };
+						return { content: [{ type: 'text', text: `No data available. Try running sync_data first.\n${weightLine}` }] };
 					}
 
 					let response = "# Today's Whoop Summary\n\n";
@@ -252,9 +281,10 @@ function createMcpServer(): Server {
 						response += `- **Resting HR**: ${recovery.resting_hr ?? 'N/A'} bpm\n`;
 						if (recovery.spo2) response += `- **SpO2**: ${recovery.spo2.toFixed(1)}%\n`;
 						if (recovery.skin_temp) response += `- **Skin Temp**: ${recovery.skin_temp.toFixed(1)}°C\n`;
-						if (weightLbs) response += `- **Weight**: ${weightLbs.toFixed(1)} lbs\n`;
+						response += weightLine;
 						response += '\n';
 					}
+					if (!recovery) response += `## Body\n${weightLine}\n`;
 
 					if (sleep) {
 						const totalInBed = sleep.total_in_bed_milli ?? 0;
@@ -669,9 +699,10 @@ async function main(): Promise<void> {
 			try {
 				const tokens = await client.exchangeCodeForTokens(code);
 				db.saveTokens(tokens);
-				sync.syncDays(90).catch(() => {});
+				sync.syncDays(90).catch(error => process.stderr.write(`[whoop] Initial sync failed: ${safeErrorSummary(error)}\n`));
 				res.send('Authorization successful! You can close this window.');
-			} catch {
+			} catch (error) {
+				process.stderr.write(`[whoop] Authorization callback failed: ${safeErrorSummary(error)}\n`);
 				res.status(500).send('Authorization failed. Please try again.');
 			}
 		});
@@ -733,15 +764,15 @@ async function main(): Promise<void> {
 			const close = async (): Promise<void> => {
 				if (closed) return;
 				closed = true;
-				await transport.close().catch(() => {});
-				await mcpServer.close().catch(() => {});
+				await transport.close().catch(error => process.stderr.write(`[whoop] Stateless transport close failed: ${safeErrorSummary(error)}\n`));
+				await mcpServer.close().catch(error => process.stderr.write(`[whoop] Stateless server close failed: ${safeErrorSummary(error)}\n`));
 			};
 			res.once('close', () => { void close(); });
 			try {
 				await mcpServer.connect(transport);
 				await transport.handleRequest(req, res);
 			} catch (error) {
-				process.stderr.write(`Stateless MCP request failed: ${error instanceof Error ? error.message : 'unknown error'}\n`);
+				process.stderr.write(`Stateless MCP request failed: ${safeErrorSummary(error)}\n`);
 				if (!res.headersSent) {
 					res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null });
 				}
@@ -761,7 +792,7 @@ async function main(): Promise<void> {
 		const shutdown = (): void => {
 			process.stdout.write('\nShutting down...\n');
 			for (const [, session] of transports) {
-				session.transport.close().catch(() => {});
+				session.transport.close().catch(error => process.stderr.write(`[whoop] Session shutdown close failed: ${safeErrorSummary(error)}\n`));
 			}
 			transports.clear();
 			db.close();

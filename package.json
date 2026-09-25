@@ -19,6 +19,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts"
   },

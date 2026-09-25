@@ -12,10 +12,10 @@ Built using the [WHOOP Developer API v2](https://developer.whoop.com/docs/introd
 
 - **8 MCP tools** (up from 6) — added `get_nap_data` and `get_workout_details`
 - **30+ biometric fields** surfaced across all tools (up from ~12)
-- **Extended `get_today`** with sleep consistency, sleep needed, sleep debt, restorative sleep, stage percentages + durations, wake events, full nap section with time windows, and weight
+- **Extended `get_today`** with sleep consistency, sleep needed, sleep debt, restorative sleep, stage percentages + durations, wake events, full nap section with time windows, and labelled WHOOP profile weight
 - **Extended `get_sleep_analysis`** with 11 new columns per night including respiratory rate, stage breakdowns, and sleep debt
 - **Extended `get_strain_history`** with avg/max HR per day and detailed workout breakdown with sport, duration, strain, HR, calories, and distance
-- **Session persistence** — extended session TTL to 24 hours with automatic expired session recovery; server auto-creates new sessions when stale session IDs are received, eliminating connector drops between chats
+- **Session recovery** — sessions have a 24-hour TTL; stale session IDs receive HTTP 404 so clients can re-initialize after a restart
 - **Fixed Express middleware conflict** — `express.json()` was consuming the request body before `StreamableHTTPServerTransport` could read it, causing "Parse error: Invalid JSON" on all MCP requests
 - **Upgraded MCP SDK** from `^1.0.0` to `1.27.1` for working Streamable HTTP support
 - **Database schema migrations** — automatically adds new columns to existing SQLite databases without data loss
@@ -28,11 +28,11 @@ Built using the [WHOOP Developer API v2](https://developer.whoop.com/docs/introd
 - **Nap Tracking**: Nap detection, time windows, stage breakdowns, efficiency, wake events per hour, sleep need reduction
 - **Strain Tracking**: Daily strain scores, calories burned, avg/max heart rate
 - **Workout History**: Sport name, duration, strain, heart rate, calories, distance, altitude, HR zone durations
-- **Body Measurements**: Weight (lbs), height, max heart rate
+- **Body Profile**: WHOOP profile weight (lbs), manually entered in WHOOP and labelled with the date this server first observed the current value
 - **Auto-Sync**: Smart sync logic keeps data fresh without redundant API calls
 - **90-Day History**: Local SQLite cache for trend analysis
 - **Encrypted Token Storage**: OAuth tokens encrypted at rest using AES-256-GCM
-- **Session Persistence**: 24-hour session TTL with automatic recovery for expired sessions
+- **Session Recovery**: 24-hour session TTL; stale sessions receive HTTP 404 for client re-initialization
 
 ## MCP Tools
 
@@ -59,7 +59,7 @@ Time Window, Duration, Hours of Sleep, Restorative Sleep, Sleep Need Reduced, Ef
 Day Strain, Calories, Avg HR, Max HR
 
 ### Body
-Weight (lbs)
+Weight (lbs): the manually entered WHOOP profile value, not a fresh measurement. WHOOP's body measurement API provides no weight timestamp. `get_today` shows when this server first observed the current value (America/New_York date), flags values unchanged for more than 30 days, and reports fetch failures in the response and server log. The observed-since date is stored in SQLite and survives restarts; it cannot establish when the value was entered in WHOOP.
 
 ## Setup
 
@@ -221,8 +221,8 @@ app.use((req, res, next) => {
 });
 ```
 
-### Session Persistence Fix
-The original 30-minute session TTL caused Claude's connector to silently lose connection between chats. Extended to 24 hours and added automatic expired session recovery — when a request arrives with an unknown or expired session ID, the server creates a new session instead of returning an error.
+### Session Recovery Fix
+The original 30-minute session TTL caused Claude's connector to silently lose connection between chats. Sessions now expire after 24 hours. An unknown session ID receives HTTP 404 so the client can re-initialize. WHOOP tokens are stored in SQLite and loaded after a server restart.
 
 ### Sync State Ghost Update Fix
 `updateSyncState()` was called even when the WHOOP API returned empty data for all endpoints (e.g., during auth failures or account issues). This marked the sync as "up to date" despite no data being written, causing all subsequent tool calls to skip syncing. Fixed by guarding `updateSyncState()` behind a `totalRecords > 0` check.

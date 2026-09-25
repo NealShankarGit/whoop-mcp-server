@@ -27,6 +27,12 @@ interface SyncStateRow {
 	newest_synced_date: string | null;
 }
 
+export interface WeightObservation {
+	weight_kilogram: number;
+	first_observed_at: string;
+	last_observed_at: string;
+}
+
 interface RecoveryTrendRow {
 	date: string;
 	recovery_score: number;
@@ -86,6 +92,13 @@ export class WhoopDatabase {
 				last_sync_at TEXT,
 				oldest_synced_date TEXT,
 				newest_synced_date TEXT
+			);
+
+			CREATE TABLE IF NOT EXISTS weight_observations (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				weight_kilogram REAL NOT NULL CHECK (weight_kilogram > 0),
+				first_observed_at TEXT NOT NULL,
+				last_observed_at TEXT NOT NULL
 			);
 
 			CREATE TABLE IF NOT EXISTS cycles (
@@ -254,6 +267,23 @@ export class WhoopDatabase {
 				)
 			WHERE id = 1
 		`).run(oldestDate, oldestDate, oldestDate, newestDate, newestDate, newestDate);
+	}
+
+	recordWeight(weightKilogram: number, observedAt = new Date().toISOString()): WeightObservation {
+		if (!Number.isFinite(weightKilogram) || weightKilogram <= 0 || !Number.isFinite(Date.parse(observedAt))) {
+			throw new Error('Invalid WHOOP profile weight observation');
+		}
+		return this.db.transaction(() => {
+			const latest = this.db.prepare('SELECT id, weight_kilogram, first_observed_at, last_observed_at FROM weight_observations ORDER BY id DESC LIMIT 1')
+				.get() as (WeightObservation & { id: number }) | undefined;
+			if (latest?.weight_kilogram === weightKilogram) {
+				this.db.prepare('UPDATE weight_observations SET last_observed_at = ? WHERE id = ?').run(observedAt, latest.id);
+				return { weight_kilogram: weightKilogram, first_observed_at: latest.first_observed_at, last_observed_at: observedAt };
+			}
+			this.db.prepare('INSERT INTO weight_observations (weight_kilogram, first_observed_at, last_observed_at) VALUES (?, ?, ?)')
+				.run(weightKilogram, observedAt, observedAt);
+			return { weight_kilogram: weightKilogram, first_observed_at: observedAt, last_observed_at: observedAt };
+		})();
 	}
 
 	upsertCycles(cycles: WhoopCycle[]): void {

@@ -127,7 +127,8 @@ export class WhoopClient {
 		try {
 			data = await tryRefresh();
 		} catch (err) {
-			process.stderr.write(`[whoop] Token refresh attempt 1 failed: ${err}. Retrying in 500ms...\n`);
+			const status = err instanceof Error ? /^Token refresh failed: (\d{3})/.exec(err.message)?.[1] : undefined;
+			process.stderr.write(`[whoop] Token refresh attempt 1 failed: ${status ? `HTTP ${status}` : err instanceof TypeError ? 'network request failed' : 'unknown error'}. Retrying in 500ms...\n`);
 			await new Promise<void>(resolve => setTimeout(resolve, 500));
 			data = await tryRefresh();
 		}
