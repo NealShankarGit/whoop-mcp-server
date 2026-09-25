@@ -28,7 +28,7 @@ Built using the [WHOOP Developer API v2](https://developer.whoop.com/docs/introd
 - **Nap Tracking**: Nap detection, time windows, stage breakdowns, efficiency, wake events per hour, sleep need reduction
 - **Strain Tracking**: Daily strain scores, calories burned, avg/max heart rate
 - **Workout History**: Sport name, duration, strain, heart rate, calories, distance, altitude, HR zone durations
-- **Body Profile**: WHOOP profile weight (lbs), manually entered in WHOOP and labelled with the date this server first observed the current value
+- **Body Profile**: WHOOP profile weight (lbs), synced from Apple Health and labelled with the date this server first observed the current value
 - **Auto-Sync**: Smart sync logic keeps data fresh without redundant API calls
 - **90-Day History**: Local SQLite cache for trend analysis
 - **Encrypted Token Storage**: OAuth tokens encrypted at rest using AES-256-GCM
@@ -59,7 +59,7 @@ Time Window, Duration, Hours of Sleep, Restorative Sleep, Sleep Need Reduced, Ef
 Day Strain, Calories, Avg HR, Max HR
 
 ### Body
-Weight (lbs): the manually entered WHOOP profile value, not a fresh measurement. WHOOP's body measurement API provides no weight timestamp. `get_today` shows when this server first observed the current value (America/New_York date), flags values unchanged for more than 30 days, and reports fetch failures in the response and server log. The observed-since date is stored in SQLite and survives restarts; it cannot establish when the value was entered in WHOOP.
+Weight (lbs): the WHOOP profile value synced from Apple Health. Neal's FITINDEX scale writes to Apple Health, which syncs to WHOOP; the WHOOP value can lag the scale by about a day. WHOOP's body measurement API provides no weight timestamp. `get_today` shows when this server first observed the current value (America/New_York date), warns when it has been unchanged for more than 30 days to check the Apple Health to WHOOP sync, and reports fetch failures in the response and server log. The observed-since date is stored in SQLite and survives restarts; it cannot establish when the scale measured the weight or when WHOOP synced it.
 
 ## Setup
 

@@ -255,14 +255,14 @@ function createMcpServer(): Server {
 					const nap = db.getTodayNap();
 					const todayWorkouts = db.getTodayWorkouts();
 
-					// WHOOP returns a manually entered profile value without a measurement timestamp.
+					// WHOOP exposes the Apple Health-synced profile value without a measurement timestamp.
 					let weightLine: string;
 					try {
 						const bodyMeasurement = await client.getBodyMeasurement();
 						const observation = db.recordWeight(bodyMeasurement?.weight_kilogram);
 						const ageDays = (Date.now() - Date.parse(observation.first_observed_at)) / 86_400_000;
-						const stale = ageDays > 30 ? '; unchanged for more than 30 days' : '';
-						weightLine = `- **Weight**: ${(observation.weight_kilogram * 2.20462).toFixed(1)} lbs (WHOOP profile weight, manually entered; observed since ${formatObservationDate(observation.first_observed_at)}${stale})\n`;
+						const stale = ageDays > 30 ? `; unchanged for ${Math.floor(ageDays)} days; check the Apple Health to WHOOP sync` : '';
+						weightLine = `- **Weight**: ${(observation.weight_kilogram * 2.20462).toFixed(1)} lbs (WHOOP profile weight, synced from Apple Health; can lag the scale by about a day; observed since ${formatObservationDate(observation.first_observed_at)}${stale})\n`;
 					} catch (error) {
 						const reason = weightErrorReason(error);
 						process.stderr.write(`[whoop] Weight unavailable: ${reason}\n`);

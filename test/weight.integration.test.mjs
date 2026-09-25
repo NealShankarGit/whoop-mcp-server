@@ -91,7 +91,7 @@ test('profile weight, failure, and auth survive the production launch path', asy
 		const health = await (await fetch(`${server.base}/health`)).json();
 		assert.equal(health.authenticated, true);
 		const first = await getToday(server.base);
-		assert.match(first.text, /- \*\*Weight\*\*: 144\.8 lbs \(WHOOP profile weight, manually entered; observed since [A-Z][a-z]{2} \d{1,2}, \d{4}\)/);
+		assert.match(first.text, /- \*\*Weight\*\*: 144\.8 lbs \(WHOOP profile weight, synced from Apple Health; can lag the scale by about a day; observed since [A-Z][a-z]{2} \d{1,2}, \d{4}\)/);
 		const sqlite = new Database(dbPath);
 		const observed = sqlite.prepare('SELECT first_observed_at FROM weight_observations').get().first_observed_at;
 		assert.equal(sqlite.prepare('SELECT count(*) AS n FROM weight_observations').get().n, 1);
@@ -106,10 +106,11 @@ test('profile weight, failure, and auth survive the production launch path', asy
 		await stop(server);
 		sqlite.prepare('UPDATE weight_observations SET first_observed_at = ?').run('2026-07-01T12:00:00.000Z');
 		server = await start(dbPath);
-		assert.match((await getToday(server.base)).text, /observed since Jul 1, 2026; unchanged for more than 30 days/);
+		const oldAgeDays = Math.floor((Date.now() - Date.parse('2026-07-01T12:00:00.000Z')) / 86_400_000);
+		assert.match((await getToday(server.base)).text, new RegExp(`observed since Jul 1, 2026; unchanged for ${oldAgeDays} days; check the Apple Health to WHOOP sync`));
 		await stop(server);
 		server = await start(dbPath, 'ok', '66.0');
-		assert.match((await getToday(server.base)).text, /- \*\*Weight\*\*: 145\.5 lbs \(WHOOP profile weight, manually entered; observed since/);
+		assert.match((await getToday(server.base)).text, /- \*\*Weight\*\*: 145\.5 lbs \(WHOOP profile weight, synced from Apple Health; can lag the scale by about a day; observed since/);
 		assert.equal(sqlite.prepare('SELECT count(*) AS n FROM weight_observations').get().n, 2);
 		await stop(server);
 		server = await start(dbPath, 'fail');
