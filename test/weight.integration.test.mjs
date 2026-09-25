@@ -119,6 +119,17 @@ test('profile weight, failure, and auth survive the production launch path', asy
 		server = await start(dbPath, 'invalid');
 		assert.match((await getToday(server.base)).text, /- \*\*Weight\*\*: unavailable \(WHOOP returned an invalid profile weight\)/);
 		assert.match(server.stderr(), /\[whoop\] Weight unavailable: WHOOP returned an invalid profile weight/);
+		await stop(server);
+		server = await start(dbPath, 'token-fail');
+		assert.equal((await fetch(`${server.base}/callback?code=test`)).status, 500);
+		assert.match(server.stderr(), /\[whoop\] Authorization callback failed: Token exchange failed: HTTP 401/);
+		await stop(server);
+		server = await start(dbPath, 'token-ok');
+		assert.equal((await fetch(`${server.base}/callback?code=test`)).status, 200);
+		for (let attempt = 0; attempt < 50 && !server.stderr().includes('Initial sync failed'); attempt++) {
+			await new Promise(resolve => setTimeout(resolve, 10));
+		}
+		assert.match(server.stderr(), /\[whoop\] Initial sync failed: Error/);
 		sqlite.close();
 	} finally {
 		if (server) await stop(server);

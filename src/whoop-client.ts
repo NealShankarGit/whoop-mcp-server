@@ -70,7 +70,7 @@ export class WhoopClient {
 		});
 
 		if (!response.ok) {
-			throw new Error(`Token exchange failed: ${await response.text()}`);
+			throw new Error(`Token exchange failed: ${response.status}`);
 		}
 
 		const data = await response.json() as { access_token: string; refresh_token: string; expires_in: number };
@@ -117,7 +117,7 @@ export class WhoopClient {
 			});
 
 			if (!response.ok) {
-				throw new Error(`Token refresh failed: ${await response.text()}`);
+				throw new Error(`Token refresh failed: ${response.status}`);
 			}
 
 			return response.json() as Promise<{ access_token: string; refresh_token?: string; expires_in: number }>;
