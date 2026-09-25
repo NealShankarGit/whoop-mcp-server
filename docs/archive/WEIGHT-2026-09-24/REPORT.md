@@ -2,17 +2,17 @@
 
 ## Result
 
-Pass for the server change and local authenticated live MCP path. The behavior commit is `467bb549ed09cbd70b6abd4b7718b9cdff445555` on `main`. The public `/health` route returned HTTP 200; unauthenticated `/mcp` returned HTTP 401, as expected from the existing OAuth proxy. No OAuth proxy configuration or connector registration was changed.
+Pass for the server change and local authenticated live MCP path. The behavior commits are `467bb549ed09cbd70b6abd4b7718b9cdff445555` and `36feeed581f3f5c832b0dfec3ecb6a8a65f44b68` on `main`. The public `/health` route returned HTTP 200; unauthenticated `/mcp` returned HTTP 401, as expected from the existing OAuth proxy. No OAuth proxy configuration or connector registration was changed.
 
 ## Summary
 
-`get_today` now identifies weight as WHOOP's manually entered profile value, retains the existing `- **Weight**: <n> lbs` prefix, shows the first observed date in America/New_York, and flags a value unchanged for more than 30 days. The WHOOP API provides no date when the user entered this value. A successful fetch records the exact kilograms value in an additive `weight_observations` SQLite table; repeated identical fetches preserve `first_observed_at`. A changed value creates a new observation. Failed or invalid fetches produce an unavailable line and a stderr log entry. Empty catches in `src` were replaced with logging. No tool names or schemas, sync behavior, resource URL, OAuth configuration, or date logic for other tools changed.
+`get_today` now identifies weight as WHOOP's manually entered profile value, retains the existing `- **Weight**: <n> lbs` prefix, shows the first observed date in America/New_York, and flags a value unchanged for more than 30 days. The WHOOP API provides no date when the user entered this value. A successful fetch records the exact kilograms value in an additive `weight_observations` SQLite table; repeated identical fetches preserve `first_observed_at`. A changed value creates a new observation. Failed or invalid fetches produce an unavailable line and a stderr log entry. Empty catches in `src` were replaced with logging. Token exchange and refresh failures now report HTTP status without logging WHOOP response bodies. No tool names or schemas, sync behavior, resource URL, OAuth configuration, or date logic for other tools changed.
 
 ## Evidence
 
 - `npm run typecheck`: pass.
 - `npm run build`: pass.
-- `npm test` (compiled `dist/index.js` launched as a child process with the same Node runtime and user permissions as systemd, a temporary SQLite DB, and mocked WHOOP HTTP responses): 1 test, 1 pass, 0 fail, 0 skip. Cases cover the labelled line, repeat fetch, persisted observation after restart, more than 30 days, changed weight, HTTP 503, invalid weight, stderr logging, encrypted token loading, and stale-session HTTP 404.
+- `npm test` (compiled `dist/index.js` launched as a child process with the same Node runtime and user permissions as systemd, a temporary SQLite DB, and mocked WHOOP HTTP responses): 1 test, 1 pass, 0 fail, 0 skip. Cases cover the labelled line, repeat fetch, persisted observation after restart, more than 30 days, changed weight, HTTP 503, invalid weight, stderr logging, encrypted token loading, stale-session HTTP 404, token-exchange failure logging, and initial-sync failure logging.
 - Empty-catch scan of `src`: 0 matches. `git diff --check`: pass.
 - Production `/data/whoop.db`: one weight observation; `first_observed_at=2026-09-25T00:13:46.342Z`, which is Sep 24, 2026 in America/New_York. Live systemd MCP `get_today` returned `- **Weight**: 144.8 lbs (WHOOP profile weight, manually entered; observed since Sep 24, 2026)` both before and after another restart.
 - Production `/health` reported `authenticated=true` before and after restart. A previous session received HTTP 404 and a new session completed `get_today` with HTTP 200 after restart. The server reads encrypted WHOOP tokens from SQLite at startup and again for data-tool calls. Public `https://whoop.nealshankar.com/health` returned HTTP 200; unauthenticated public `/mcp` returned HTTP 401.
@@ -20,7 +20,7 @@ Pass for the server change and local authenticated live MCP path. The behavior c
 
 ## Approaches tried
 
-The first implementation and production launch path passed its checks. No alternative implementation was needed.
+The weight implementation and production launch path passed its checks. An added OAuth callback test then failed: a rejected token exchange logged only `Error`, because the client threw the WHOOP response body without an HTTP status and the safe logger deliberately omitted that body. The client now throws the HTTP status for exchange and refresh failures. The expanded test and full suite passed after this change.
 
 ## Decisions made without owner input
 
